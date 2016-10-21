@@ -21,6 +21,7 @@ class steer_nn():
         self.create_tensorflow()
 
         self.input_data = np.zeros((BATCH_SIZE,90,320,3))
+        self.angle_data = np.zeros((BATCH_SIZE))
 
         self.session = tf.InteractiveSession()
 
@@ -92,17 +93,17 @@ class steer_nn():
         #for batch_idx in range(len(self.train_idx)//BATCH_SIZE):
         for batch_idx in range(5):
             self.input_ori = self.cam[self.train_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE], :, :, :]
-            self.angle_truth = self.angle[self.train_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE]]
-            print(batch_idx, self.input_ori.shape, self.angle_truth.shape)
+            self.angle_data = self.angle[self.train_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE]]
+            print(batch_idx, self.input_ori.shape)
             print("train_idx's: ", self.train_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE])
             # Resize and normalize input image
             for img_cnt in range(self.input_ori.shape[0]):
                 for channel in range(self.input_ori.shape[3]):
-                    self.input_data[img_cnt,:,:,channel] = cv2.resize(self.input_ori[img_cnt,:,:,channel] ,(90,320))
+                    self.input_data[img_cnt,:,:,channel] = cv2.resize(self.input_ori[img_cnt,:,:,channel] ,(320, 90))
 
             self.summary, _ = self.session.run([self.merged_summaries, self.optimizer], feed_dict={
                 self.img_in:self.input_data,
-                self.angle:self.angle_truth
+                self.angle_truth:self.angle_data
             })
         pass
 

@@ -105,16 +105,20 @@ class steer_nn():
 
 #    @profile
     def train(self):
-        #for batch_idx in range(len(self.train_idx)//BATCH_SIZE):
-        for batch_idx in range(20):
+        for batch_idx in range(len(self.train_idx)//BATCH_SIZE):
             self.input_ori = self.cam[self.train_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE], :, :, :]
             self.angle_data = self.angle[self.train_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE]]
             print(batch_idx, self.input_ori.shape)
             print("train_idx's: ", self.train_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE])
             # Resize and normalize input image
             for img_cnt in range(self.input_ori.shape[0]):
+                # Resize to x/2, y/2
+                tmp_resized = np.uint8(cv2.resize(self.input_ori[img_cnt,:,:,:] ,(320, 90)))
+                # Change to YUV colorspace
+                tmp_yuv = cv2.cvtColor(tmp_resized,cv2.COLOR_BGR2YUV)
+                # Normalization
                 for channel in range(self.input_ori.shape[3]):
-                    self.input_data[img_cnt,:,:,channel] = cv2.resize(self.input_ori[img_cnt,:,:,channel] ,(320, 90))
+                    self.input_data[img_cnt,:,:,channel] = (tmp_yuv[:,:,channel]-tmp_yuv[:,:,channel].mean())/(tmp_yuv[:,:,channel].std()+1e-8)
 
             self.summary, _ = self.session.run([self.merged_summaries, self.optimizer], feed_dict={
                 self.img_in:self.input_data,

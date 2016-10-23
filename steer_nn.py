@@ -8,7 +8,7 @@ import tensorflow as tf
 import numpy as np
 from sklearn.model_selection import train_test_split
 
-BATCH_SIZE = 20
+BATCH_SIZE = 100
 HIDDEN_LAYER_DEPTH = 1024
 
 class steer_nn():
@@ -16,6 +16,7 @@ class steer_nn():
     Neural network to predict steering wheel turning angle. 
     """
 
+#    @profile
     def __init__(self):
         self.create_nn()
         self.create_tensorflow()
@@ -33,7 +34,7 @@ class steer_nn():
         tf.initialize_all_variables().run()
 
         # Add ops to save and restore all the variables.
-        #self.saver = tf.train.Saver()
+        self.saver = tf.train.Saver()
 
     def weight_variable(self,shape):
         initial = tf.truncated_normal(shape)
@@ -51,47 +52,61 @@ class steer_nn():
 
     # Convolutional NN impl.
     def create_nn(self):
-        # network weights
-        Wc1 = self.weight_variable([5,5,3,24])
-        bc1 = self.bias_variable([24])
-        Wc2 = self.weight_variable([5,5,24,36])
-        bc2 = self.bias_variable([36])
-        Wc3 = self.weight_variable([5,5,36,48])
-        bc3 = self.bias_variable([48])
-        Wc4 = self.weight_variable([3,3,48,64])
-        bc4 = self.bias_variable([64])
-        Wc5 = self.weight_variable([3,3,64,64])
-        bc5 = self.bias_variable([64])
-        Wfc = self.weight_variable([4*33*64,HIDDEN_LAYER_DEPTH])
-        bfc = self.bias_variable([HIDDEN_LAYER_DEPTH])
-        Wout = self.weight_variable([HIDDEN_LAYER_DEPTH,1])
-        bout = self.bias_variable([1])
-        # input layer - [batch size, 90 h, 320 w, 3 channels]
-        self.img_in = tf.placeholder(tf.float32, [None, 90, 320, 3])
-        #print("img_in shape: ", self.img_in)
+        with tf.name_scope("input_layer"):
+            # input layer - [batch size, 90 h, 320 w, 3 channels]
+            self.img_in = tf.placeholder(tf.float32, [None, 90, 320, 3])
+
         # conv layers
-        conv_layer1 = self.conv2d(self.img_in,Wc1,bc1,2)
-        tf.image_summary("Convolution layer 1", tf.reshape(conv_layer1[0,:,:,:], [43,158,24,1]), max_images=100)
-        conv_layer2 = self.conv2d(conv_layer1,Wc2,bc2,2)
-        conv_layer3 = self.conv2d(conv_layer2,Wc3,bc3,2)
-        conv_layer4 = self.conv2d(conv_layer3,Wc4,bc4,1)
-        conv_layer5 = self.conv2d(conv_layer4,Wc5,bc5,1)
-        conv_layer5_flat = tf.reshape(conv_layer5,[-1,4*33*64])
-        # Fully connected layer
-        fc_layer = tf.nn.relu(tf.matmul(conv_layer5_flat,Wfc) + bfc)
-        # Output  
-        self.angle = tf.matmul(fc_layer,Wout) + bout
+        with tf.name_scope("conv_layer1"):
+            Wc1 = self.weight_variable([5,5,3,24])
+            bc1 = self.bias_variable([24])
+            conv_layer1 = self.conv2d(self.img_in,Wc1,bc1,2)
+            tf.image_summary("Convolution layer 1", tf.reshape(conv_layer1[0,:,:,:], [43,158,24,1]), max_images=100)
+
+        with tf.name_scope("conv_layer2"):
+            Wc2 = self.weight_variable([5,5,24,36])
+            bc2 = self.bias_variable([36])
+            conv_layer2 = self.conv2d(conv_layer1,Wc2,bc2,2)
+
+        with tf.name_scope("conv_layer3"):
+            Wc3 = self.weight_variable([5,5,36,48])
+            bc3 = self.bias_variable([48])
+            conv_layer3 = self.conv2d(conv_layer2,Wc3,bc3,2)
+
+        with tf.name_scope("conv_layer4"):
+            Wc4 = self.weight_variable([3,3,48,64])
+            bc4 = self.bias_variable([64])
+            conv_layer4 = self.conv2d(conv_layer3,Wc4,bc4,1)
+
+        with tf.name_scope("conv_layer5"):
+            Wc5 = self.weight_variable([3,3,64,64])
+            bc5 = self.bias_variable([64])
+            conv_layer5 = self.conv2d(conv_layer4,Wc5,bc5,1)
+
+        with tf.name_scope("fully-conn_layer"):
+            # Fully connected layer
+            Wfc = self.weight_variable([4*33*64,HIDDEN_LAYER_DEPTH])
+            bfc = self.bias_variable([HIDDEN_LAYER_DEPTH])
+            conv_layer5_flat = tf.reshape(conv_layer5,[-1,4*33*64])
+            fc_layer = tf.nn.relu(tf.matmul(conv_layer5_flat,Wfc) + bfc)
+
+        with tf.name_scope("output_layer"):
+            # Output  
+            Wout = self.weight_variable([HIDDEN_LAYER_DEPTH,1])
+            bout = self.bias_variable([1])
+            self.predict_angle = tf.matmul(fc_layer,Wout) + bout
 
     def create_tensorflow(self):
         self.angle_truth = tf.placeholder(tf.float32, [None])
-        self.cost = tf.reduce_mean(tf.square(self.angle_truth - self.angle))
+        self.cost = tf.reduce_mean(tf.square(self.angle_truth - self.predict_angle))
         # Monitor the cost of training
         tf.scalar_summary('Cost',self.cost)
         self.optimizer = tf.train.AdamOptimizer(0.0001).minimize(self.cost)
 
+#    @profile
     def train(self):
         #for batch_idx in range(len(self.train_idx)//BATCH_SIZE):
-        for batch_idx in range(5):
+        for batch_idx in range(20):
             self.input_ori = self.cam[self.train_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE], :, :, :]
             self.angle_data = self.angle[self.train_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE]]
             print(batch_idx, self.input_ori.shape)
@@ -105,6 +120,9 @@ class steer_nn():
                 self.img_in:self.input_data,
                 self.angle_truth:self.angle_data
             })
+
+            # Record a summary for every batch
+            self.test_writer.add_summary(self.summary,batch_idx)
         pass
 
 
@@ -130,7 +148,11 @@ class steer_nn():
 
     def close_dataset(self):
         # Close the dataset file
-        self.f.close
+        self.f.close()
+
+    def saveParm(self):
+        # Save the scene
+        save_path = self.saver.save(self.session, "./tmp/model_tr.ckpt")
 
 def main():
     c2_net = steer_nn()
@@ -138,6 +160,8 @@ def main():
     c2_net.open_dataset('/home/vitob/ROS/dataset_1_center_camera_3ch.hdf5')
     c2_net.train()
     c2_net.close_dataset()
+
+    c2_net.saveParm
 
     return
 

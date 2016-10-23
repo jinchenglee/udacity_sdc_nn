@@ -8,7 +8,7 @@ import tensorflow as tf
 import numpy as np
 from sklearn.model_selection import train_test_split
 
-BATCH_SIZE = 100
+BATCH_SIZE = 16
 HIDDEN_LAYER_DEPTH = 1024
 
 class steer_nn():
@@ -21,7 +21,7 @@ class steer_nn():
         self.create_nn()
         self.create_tensorflow()
 
-        self.input_data = np.zeros((BATCH_SIZE,90,320,3))
+        self.input_data = np.zeros((BATCH_SIZE,45,160,3))
         self.angle_data = np.zeros((BATCH_SIZE))
 
         self.session = tf.InteractiveSession()
@@ -53,15 +53,15 @@ class steer_nn():
     # Convolutional NN impl.
     def create_nn(self):
         with tf.name_scope("input_layer"):
-            # input layer - [batch size, 90 h, 320 w, 3 channels]
-            self.img_in = tf.placeholder(tf.float32, [None, 90, 320, 3])
+            # input layer - [batch size, 45 h, 160 w, 3 channels]
+            self.img_in = tf.placeholder(tf.float32, [None, 45, 160, 3])
 
         # conv layers
         with tf.name_scope("conv_layer1"):
             Wc1 = self.weight_variable([5,5,3,24])
             bc1 = self.bias_variable([24])
             conv_layer1 = self.conv2d(self.img_in,Wc1,bc1,2)
-            tf.image_summary("Convolution layer 1", tf.reshape(conv_layer1[0,:,:,:], [43,158,24,1]), max_images=100)
+            tf.image_summary("Convolution layer 1", tf.reshape(conv_layer1[0,:,:,:], [21,78,24,1]), max_images=100)
 
         with tf.name_scope("conv_layer2"):
             Wc2 = self.weight_variable([5,5,24,36])
@@ -78,16 +78,16 @@ class steer_nn():
             bc4 = self.bias_variable([64])
             conv_layer4 = self.conv2d(conv_layer3,Wc4,bc4,1)
 
-        with tf.name_scope("conv_layer5"):
-            Wc5 = self.weight_variable([3,3,64,64])
-            bc5 = self.bias_variable([64])
-            conv_layer5 = self.conv2d(conv_layer4,Wc5,bc5,1)
+        #with tf.name_scope("conv_layer5"):
+        #    Wc5 = self.weight_variable([3,3,64,64])
+        #    bc5 = self.bias_variable([64])
+        #    conv_layer5 = self.conv2d(conv_layer4,Wc5,bc5,1)
 
         with tf.name_scope("fully-conn_layer"):
             # Fully connected layer
-            Wfc = self.weight_variable([4*33*64,HIDDEN_LAYER_DEPTH])
+            Wfc = self.weight_variable([1*15*64,HIDDEN_LAYER_DEPTH])
             bfc = self.bias_variable([HIDDEN_LAYER_DEPTH])
-            conv_layer5_flat = tf.reshape(conv_layer5,[-1,4*33*64])
+            conv_layer5_flat = tf.reshape(conv_layer4,[-1,1*15*64])
             fc_layer = tf.nn.relu(tf.matmul(conv_layer5_flat,Wfc) + bfc)
 
         with tf.name_scope("output_layer"):
@@ -101,7 +101,7 @@ class steer_nn():
         self.cost = tf.reduce_mean(tf.square(self.angle_truth - self.predict_angle))
         # Monitor the cost of training
         tf.scalar_summary('Cost',self.cost)
-        self.optimizer = tf.train.AdamOptimizer(0.0001).minimize(self.cost)
+        self.optimizer = tf.train.AdamOptimizer(0.002).minimize(self.cost)
 
 #    @profile
     def train(self):
@@ -113,12 +113,12 @@ class steer_nn():
             # Resize and normalize input image
             for img_cnt in range(self.input_ori.shape[0]):
                 # Resize to x/2, y/2
-                tmp_resized = np.uint8(cv2.resize(self.input_ori[img_cnt,:,:,:] ,(320, 90)))
+                tmp_resized = np.uint8(cv2.resize(self.input_ori[img_cnt,:,:,:] ,(160, 45)))
                 # Change to YUV colorspace
                 tmp_yuv = cv2.cvtColor(tmp_resized,cv2.COLOR_BGR2YUV)
                 # Normalization
                 for channel in range(self.input_ori.shape[3]):
-                    self.input_data[img_cnt,:,:,channel] = (tmp_yuv[:,:,channel]-tmp_yuv[:,:,channel].mean())/(tmp_yuv[:,:,channel].std()+1e-8)
+                    self.input_data[img_cnt,:,:,channel] = (tmp_yuv[:,:,channel]-tmp_yuv[:,:,channel].mean())/tmp_yuv[:,:,channel].std()
 
             self.summary, _ = self.session.run([self.merged_summaries, self.optimizer], feed_dict={
                 self.img_in:self.input_data,
@@ -162,7 +162,8 @@ def main():
     c2_net = steer_nn()
 
     c2_net.open_dataset('/home/vitob/ROS/dataset_1_center_camera_3ch.hdf5')
-    c2_net.train()
+    for epoch in range(1):
+        c2_net.train()
     c2_net.close_dataset()
 
     c2_net.saveParm

@@ -9,6 +9,8 @@ import tensorflow as tf
 import numpy as np
 from sklearn.model_selection import train_test_split
 
+import good_files as gf
+
 BATCH_SIZE = 16
 HIDDEN_LAYER_DEPTH = 1024
 
@@ -26,12 +28,14 @@ class steer_nn():
         self.angle_data = np.zeros((BATCH_SIZE))
         self.scaled_angle_data = np.zeros((BATCH_SIZE))
 
+        self.summary_idx = 0
+
         self.session = tf.InteractiveSession()
 
         # Merge all summaries and write them out
         self.merged_summaries = tf.merge_all_summaries()
-        self.train_writer = tf.train.SummaryWriter("./tmp",self.session.graph)
-        self.test_writer = tf.train.SummaryWriter("./tmp")
+        self.train_writer = tf.train.SummaryWriter("./tmp/train",self.session.graph)
+        self.test_writer = tf.train.SummaryWriter("./tmp/test")
         # Init session
         tf.initialize_all_variables().run()
 
@@ -150,7 +154,7 @@ class steer_nn():
 
     def create_tensorflow(self):
         self.angle_truth = tf.placeholder(tf.float32, [None])
-        self.cost = tf.reduce_mean(tf.square(self.angle_truth - self.predict_angle))
+        self.cost = tf.sqrt(tf.reduce_mean(tf.square(self.angle_truth - self.predict_angle)))
         # Monitor the cost of training
         tf.scalar_summary('Cost',self.cost)
         self.optimizer = tf.train.AdamOptimizer(0.002).minimize(self.cost)
@@ -167,49 +171,46 @@ class steer_nn():
             # Resize and normalize input image
             local_count = 0
             for img_cnt in range(self.input_ori.shape[0]):
-                # Resize 
+                # Resize to x/2, y/2
                 tmp = self.input_ori[img_cnt,:,46:226,:]
-                tmp_2 = np.zeros((180,227,3))
-                tmp_2[:,:,0] = tmp[0,:,:]
-                tmp_2[:,:,1] = tmp[1,:,:]
-                tmp_2[:,:,2] = tmp[2,:,:]
-                tmp_resized = np.uint8(cv2.resize(tmp_2,(160, 45)))
-                # Change to YUV colorspace
-                #tmp_yuv = cv2.cvtColor(tmp_resized,cv2.COLOR_BGR2YUV)
+                # Change [ch,h,w] -> [h,w,ch]
+                tmp = tmp.swapaxes(0,1)
+                tmp = tmp.swapaxes(1,2)
+                tmp_resized = cv2.resize(np.uint8(tmp),(160, 45))
+
                 # Normalization
                 for channel in range(self.input_ori.shape[1]):
                     #self.input_data[local_count,:,:,channel] = (tmp_resized[:,:,channel]-tmp_resized[:,:,channel].mean())/tmp_resized[:,:,channel].std()
                     self.input_data[local_count,:,:,channel] = (tmp_resized[:,:,channel]-tmp_resized[:,:,channel].mean())/(np.max(tmp_resized[:,:,channel])-np.min(tmp_resized[:,:,channel]))
-                self.scaled_angle_data[local_count] = self.angle[img_cnt]*100
+                self.scaled_angle_data[local_count] = self.angle[img_cnt]
                 local_count +=1
 
-            print("local_count = ", local_count)
-
-            self.summary, _ = self.session.run([self.merged_summaries, self.optimizer], feed_dict={
+            self.summary, _, cost = self.session.run([self.merged_summaries, self.optimizer, self.cost], feed_dict={
                 self.img_in:self.input_data,
                 self.angle_truth:self.scaled_angle_data
             })
 
+            print("local_count = ", local_count, "cost = ", cost)
+
             # Record a summary for every batch
-            self.test_writer.add_summary(self.summary,batch_idx)
+            self.train_writer.add_summary(self.summary,self.summary_idx)
+            self.summary_idx += 1
 
     def test(self):
-        for batch_idx in range(1):
+        for batch_idx in range(len(self.test_idx)//BATCH_SIZE):
             self.input_ori = self.cam[self.test_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE], :, :, :]
             self.angle_data = self.angle[self.test_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE]]
 
             for img_cnt in range(self.input_ori.shape[0]):
                 # Resize to x/2, y/2
                 tmp = self.input_ori[img_cnt,:,46:226,:]
-                tmp_2 = np.zeros((180,227,3))
-                tmp_2[:,:,0] = tmp[0,:,:]
-                tmp_2[:,:,1] = tmp[1,:,:]
-                tmp_2[:,:,2] = tmp[2,:,:]
-                tmp_resized = np.uint8(cv2.resize(tmp_2,(160, 45)))
+                # Change [ch,h,w] -> [h,w,ch]
+                tmp = tmp.swapaxes(0,1)
+                tmp = tmp.swapaxes(1,2)
+                tmp_resized = cv2.resize(np.uint8(tmp),(160, 45))
 
-                #tmp_resized = np.uint8(cv2.resize(self.input_ori[img_cnt,:,:,:] ,(160, 45)))
                 # Save image
-                cv2.imwrite("./tmp/test_"+str(img_cnt)+".png",tmp_resized)
+                #cv2.imwrite("./tmp/test_"+str(img_cnt)+".png",tmp_resized)
                 # Normalization
                 for channel in range(self.input_ori.shape[1]):
                     self.input_data[img_cnt,:,:,channel] = (tmp_resized[:,:,channel]-tmp_resized[:,:,channel].mean())/(np.max(tmp_resized[:,:,channel])-np.min(tmp_resized[:,:,channel]))
@@ -218,20 +219,32 @@ class steer_nn():
                     { 
                         self.img_in     :   self.input_data
                     })
-            loss = tf.reduce_mean(tf.square(self.angle_data*100 - pred_angle_eval))
+            loss = tf.sqrt(tf.reduce_mean(tf.square(self.angle_data - pred_angle_eval)))
+
+            self.summary, cost = self.session.run([self.merged_summaries, self.cost], feed_dict={
+                self.img_in:self.input_data,
+                self.angle_truth:self.angle_data
+            })
+
+            # Record a summary for every batch
+            self.test_writer.add_summary(self.summary,self.summary_idx)
+            self.summary_idx += 1
+
+            print("pred_angle_eval = ", pred_angle_eval)
+
             test_out = np.zeros((len(self.angle_data),4))
             # index
             test_out[:,0] = range(len(self.angle_data))
             # Ground truth
-            test_out[:,1] = self.angle_data*100
+            test_out[:,1] = self.angle_data
             # Predicted value
-            test_out[:,2] = pred_angle_eval[:,0]
+            test_out[:,2] = pred_angle_eval.transpose()
             # Delta
             test_out[:,3] = test_out[:,1] - test_out[:,2]
             #print("Ground truth: ", self.angle_data*100)
             #print("Prediction: ", pred_angle_eval)
             print(test_out)
-            print('Test batch: ', batch_idx, ' Accuracy = ', loss.eval() )
+            print('Test batch: ', batch_idx, ' loss = ', loss.eval())
 
     def open_dataset(self, file):
         # Open HDF5 file 
@@ -240,16 +253,20 @@ class steer_nn():
         # Training input data - camera image
         self.cam = self.f.root.images
         # Labels - steering wheel angle
-        self.angle = self.f.root.vehicle_states[:,5]
+        # Labels in the deepdrive dataset
+        # target
+        self.angle = self.f.root.targets[:,4]
 
         # Shuffle data input, prepare for batch generation
         index = list(range(self.cam.shape[0]))
         # 70% train, 30% test
-        self.train_idx, self.test_idx = train_test_split(index, test_size = 0.2)
+        self.train_idx, self.test_idx = train_test_split(index, test_size = 0.1)
 
     def close_dataset(self):
         # Close the dataset file
         self.f.close()
+        self.train_writer.close()
+        self.test_writer.close()
 
     def saveParm(self):
         # Save the scene
@@ -265,20 +282,21 @@ class steer_nn():
 def main():
     c2_net = steer_nn()
 
-    for epoch in range(10):
-        os.system("cp /home/vitob/Downloads/deepdrive_hdf5/train_"+str(epoch).zfill(4)+".h5.gz /home/vitob/git_projects/udacity_sdc_nn/train.h5.gz")
-        os.system("gzip -d /home/vitob/git_projects/udacity_sdc_nn/train.h5.gz")
-        c2_net.open_dataset('/home/vitob/git_projects/udacity_sdc_nn/train.h5')
+    np.set_printoptions(precision=5)
+
+    #for epoch in range(10):
+    for epoch in gf.train_list:
+        c2_net.open_dataset("/home/vitob/Downloads/deepdrive_hdf5/train_"+str(epoch).zfill(4)+".zlib.h5")
+        print("Training on ./train_"+str(epoch).zfill(4)+".zlib.h5")
 
         # Training
         c2_net.train()
-        c2_net.test()
         # Evaluation
         #c2_net.restoreParam()
-        #c2_net.test()
+
+        c2_net.test()
 
         c2_net.close_dataset()
-        os.system("rm -fr /home/vitob/git_projects/udacity_sdc_nn/train.h5")
 
     c2_net.saveParm()
 

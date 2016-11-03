@@ -13,6 +13,7 @@ import good_files as gf
 
 BATCH_SIZE = 16
 HIDDEN_LAYER_DEPTH = 1024
+EPSILON = 0.000001
 
 class steer_nn():
     """
@@ -164,16 +165,20 @@ class steer_nn():
             tf.histogram_summary('pred_angle_hist',self.predict_angle)
 
         # Image summaries
+        tf.image_summary("Input image", self.img_in, max_images=20)
+
         layer1_image1 = tf.transpose(conv_layer1[0:1,:,:,:], perm=[3,1,2,0])
-        list_lc1 = tf.split(0,24,layer1_image1)
-        layer1_image1 = tf.concat(1, list_lc1)
-        tf.image_summary("Convolution layer 1", layer1_image1, max_images=100)
+        layer1_combine_1 = tf.concat(2, layer1_image1)
+        list_lc1 = tf.split(0,24,layer1_combine_1)
+        layer1_combine_1= tf.concat(1, list_lc1)
+        tf.image_summary("Convolution layer 1", layer1_combine_1, max_images=20)
         #tf.image_summary("Convolution layer 1", tf.reshape(conv_layer1[0,:,:,:], [24,21,78,1]), max_images=100)
 
         layer2_image1 = tf.transpose(conv_layer2[0:1,:,:,:], perm=[3,1,2,0])
-        list_lc2 = tf.split(0,36,layer2_image1)
-        layer1_image1 = tf.concat(1, list_lc2)
-        tf.image_summary("Convolution layer 2", layer2_image1, max_images=100)
+        layer2_combine_1 = tf.concat(2, layer2_image1)
+        list_lc2 = tf.split(0,36,layer2_combine_1)
+        layer2_combine_1= tf.concat(1, list_lc2)
+        tf.image_summary("Convolution layer 2", layer2_combine_1, max_images=20)
 
     def create_tensorflow(self):
         self.angle_truth = tf.placeholder(tf.float32, [None])
@@ -306,15 +311,15 @@ def main():
 
     np.set_printoptions(precision=5,suppress=True)
 
-    for epoch in range(10):
+    for epoch in range(1):
     #for epoch in gf.train_list:
         c2_net.open_dataset("/home/vitob/Downloads/deepdrive_hdf5/train_"+str(epoch).zfill(4)+".zlib.h5")
         print("Training on ./train_"+str(epoch).zfill(4)+".zlib.h5")
 
         # Training
-        #c2_net.train()
+        c2_net.train()
         # Evaluation
-        c2_net.restoreParam()
+        #c2_net.restoreParam()
 
         c2_net.test()
 

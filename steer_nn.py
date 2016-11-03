@@ -8,7 +8,7 @@ import tensorflow as tf
 import numpy as np
 from sklearn.model_selection import train_test_split
 
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 HIDDEN_LAYER_DEPTH = 1024
 
 class steer_nn():
@@ -171,11 +171,11 @@ class steer_nn():
                     # Resize to x/2, y/2
                     tmp_resized = np.uint8(cv2.resize(self.input_ori[img_cnt,:,:,:] ,(160, 45)))
                     # Change to YUV colorspace
-                    tmp_yuv = cv2.cvtColor(tmp_resized,cv2.COLOR_BGR2YUV)
+                    #tmp_yuv = cv2.cvtColor(tmp_resized,cv2.COLOR_BGR2YUV)
                     # Normalization
                     for channel in range(self.input_ori.shape[3]):
-                        #self.input_data[local_count,:,:,channel] = (tmp_yuv[:,:,channel]-tmp_yuv[:,:,channel].mean())/tmp_yuv[:,:,channel].std()
-                        self.input_data[local_count,:,:,channel] = (tmp_yuv[:,:,channel]-tmp_yuv[:,:,channel].mean())/(np.max(tmp_yuv[:,:,channel])-np.min(tmp_yuv[:,:,channel]))
+                        #self.input_data[local_count,:,:,channel] = (tmp_resized[:,:,channel]-tmp_resized[:,:,channel].mean())/tmp_resized[:,:,channel].std()
+                        self.input_data[local_count,:,:,channel] = (tmp_resized[:,:,channel]-tmp_resized[:,:,channel].mean())/(np.max(tmp_resized[:,:,channel])-np.min(tmp_resized[:,:,channel]))
                     self.scaled_angle_data[local_count] = self.angle[img_cnt]*100
                     local_count +=1
 
@@ -190,7 +190,7 @@ class steer_nn():
             self.test_writer.add_summary(self.summary,batch_idx)
 
     def test(self):
-        for batch_idx in range(10):
+        for batch_idx in range(1):
             self.input_ori = self.cam[self.test_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE], :, :, :]
             self.angle_data = self.angle[self.test_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE]]
 
@@ -198,16 +198,30 @@ class steer_nn():
                 # Resize to x/2, y/2
                 tmp_resized = np.uint8(cv2.resize(self.input_ori[img_cnt,:,:,:] ,(160, 45)))
                 # Change to YUV colorspace
-                tmp_yuv = cv2.cvtColor(tmp_resized,cv2.COLOR_BGR2YUV)
+                #tmp_yuv = cv2.cvtColor(tmp_resized,cv2.COLOR_BGR2YUV)
+                # Save image
+                cv2.imwrite("./tmp/test_"+str(img_cnt)+".png",tmp_resized)
                 # Normalization
                 for channel in range(self.input_ori.shape[3]):
-                    self.input_data[img_cnt,:,:,channel] = (tmp_yuv[:,:,channel]-tmp_yuv[:,:,channel].mean())/(np.max(tmp_yuv[:,:,channel])-np.min(tmp_yuv[:,:,channel]))
+                    self.input_data[img_cnt,:,:,channel] = (tmp_resized[:,:,channel]-tmp_resized[:,:,channel].mean())/(np.max(tmp_resized[:,:,channel])-np.min(tmp_resized[:,:,channel]))
 
             pred_angle_eval = self.predict_angle.eval(feed_dict = 
                     { 
                         self.img_in     :   self.input_data
                     })
             loss = tf.reduce_mean(tf.square(self.angle_data*100 - pred_angle_eval))
+            test_out = np.zeros((len(self.angle_data),4))
+            # index
+            test_out[:,0] = range(len(self.angle_data))
+            # Ground truth
+            test_out[:,1] = self.angle_data*100
+            # Predicted value
+            test_out[:,2] = pred_angle_eval[:,0]
+            # Delta
+            test_out[:,3] = test_out[:,1] - test_out[:,2]
+            #print("Ground truth: ", self.angle_data*100)
+            #print("Prediction: ", pred_angle_eval)
+            print(test_out)
             print('Test batch: ', batch_idx, ' Accuracy = ', loss.eval() )
 
     def open_dataset(self, file):
@@ -237,17 +251,23 @@ class steer_nn():
 
     def restoreParam(self):
         # Restore the scene
-        self.saver.restore(self.session, "./record/model_tr_5.ckpt")
+        self.saver.restore(self.session, "./record/model_tr_1.ckpt")
         pass
 
 
 def main():
     c2_net = steer_nn()
 
-    c2_net.open_dataset('/home/vitob/ROS/dataset_2_center_camera_3ch.hdf5')
+    c2_net.open_dataset('/home/vitob/ROS/dataset_1_center_camera_3ch.hdf5')
+
+    # Training
     for epoch in range(1):
         c2_net.train()
         c2_net.test()
+    # Evaluation
+    #c2_net.restoreParam()
+    #c2_net.test()
+
     c2_net.close_dataset()
 
     c2_net.saveParm()

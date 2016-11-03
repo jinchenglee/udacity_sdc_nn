@@ -96,37 +96,44 @@ class steer_nn():
 
         # conv layers
         with tf.name_scope("conv_layer1"):
-            Wc1 = self.weight_variable([5,5,3,24])
-            bc1 = self.bias_variable([24])
+            with tf.name_scope("weights"):
+                Wc1 = self.weight_variable([5,5,3,24])
+                tf.histogram_summary("Wc1", Wc1);
+            with tf.name_scope("biases"):
+                bc1 = self.bias_variable([24])
+                tf.histogram_summary("bc1", bc1);
             conv_layer1 = self.conv2d(self.img_in,Wc1,bc1,2)
-            tf.image_summary("Convolution layer 1", tf.reshape(conv_layer1[0,:,:,:], [21,78,24,1]), max_images=100)
-            tf.histogram_summary("Wc1", Wc1);
-            tf.histogram_summary("bc1", bc1);
-            #tf.scalar_summary('conv_1',conv_layer1)
+            tf.histogram_summary('conv_1_activation',conv_layer1)
 
         with tf.name_scope("conv_layer2"):
-            Wc2 = self.weight_variable([5,5,24,36])
-            bc2 = self.bias_variable([36])
+            with tf.name_scope("weights"):
+                Wc2 = self.weight_variable([5,5,24,36])
+                tf.histogram_summary("Wc2", Wc2);
+            with tf.name_scope("biases"):
+                bc2 = self.bias_variable([36])
+                tf.histogram_summary("bc2", bc2);
             conv_layer2 = self.conv2d(conv_layer1,Wc2,bc2,2)
-            tf.histogram_summary("Wc2", Wc2);
-            tf.histogram_summary("bc2", bc2);
-            #tf.scalar_summary('conv_2',conv_layer2)
+            tf.histogram_summary('conv_2_activation',conv_layer2)
 
         with tf.name_scope("conv_layer3"):
-            Wc3 = self.weight_variable([5,5,36,48])
-            bc3 = self.bias_variable([48])
+            with tf.name_scope("weights"):
+                Wc3 = self.weight_variable([5,5,36,48])
+                tf.histogram_summary("Wc3", Wc3);
+            with tf.name_scope("biases"):
+                bc3 = self.bias_variable([48])
+                tf.histogram_summary("bc3", bc3);
             conv_layer3 = self.conv2d(conv_layer2,Wc3,bc3,2)
-            tf.histogram_summary("Wc3", Wc3);
-            tf.histogram_summary("bc3", bc3);
-            #tf.scalar_summary('conv_3',conv_layer3)
+            tf.histogram_summary('conv_3_activation',conv_layer3)
 
         with tf.name_scope("conv_layer4"):
-            Wc4 = self.weight_variable([3,3,48,64])
-            bc4 = self.bias_variable([64])
+            with tf.name_scope("weights"):
+                Wc4 = self.weight_variable([3,3,48,64])
+                tf.histogram_summary("Wc4", Wc4);
+            with tf.name_scope("biases"):
+                bc4 = self.bias_variable([64])
+                tf.histogram_summary("bc4", bc4);
             conv_layer4 = self.conv2d(conv_layer3,Wc4,bc4,1)
-            tf.histogram_summary("Wc4", Wc4);
-            tf.histogram_summary("bc4", bc4);
-            #tf.scalar_summary('conv_4',conv_layer4)
+            tf.histogram_summary('conv_4_activation',conv_layer4)
 
         #with tf.name_scope("conv_layer5"):
         #    Wc5 = self.weight_variable([3,3,64,64])
@@ -135,22 +142,38 @@ class steer_nn():
 
         with tf.name_scope("fully-conn_layer"):
             # Fully connected layer
-            Wfc = self.weight_variable([1*15*64,HIDDEN_LAYER_DEPTH])
-            bfc = self.bias_variable([HIDDEN_LAYER_DEPTH])
+            with tf.name_scope("weights"):
+                Wfc = self.weight_variable([1*15*64,HIDDEN_LAYER_DEPTH])
+                tf.histogram_summary("Wfc", Wfc);
+            with tf.name_scope("biases"):
+                bfc = self.bias_variable([HIDDEN_LAYER_DEPTH])
+                tf.histogram_summary("bfc", bfc);
             conv_layer5_flat = tf.reshape(conv_layer4,[-1,1*15*64])
             fc_layer = tf.nn.relu(tf.matmul(conv_layer5_flat,Wfc) + bfc)
-            tf.histogram_summary("Wfc", Wfc);
-            tf.histogram_summary("bfc", bfc);
-            #tf.scalar_summary('conv_5_flat',conv_layer5_flat)
+            tf.histogram_summary('conv_5_flat_activation',conv_layer5_flat)
 
         with tf.name_scope("output_layer"):
             # Output  
-            Wout = self.weight_variable([HIDDEN_LAYER_DEPTH,1])
-            bout = self.bias_variable([1])
+            with tf.name_scope("weights"):
+                Wout = self.weight_variable([HIDDEN_LAYER_DEPTH,1])
+                tf.histogram_summary("Wout", Wout);
+            with tf.name_scope("biases"):
+                bout = self.bias_variable([1])
+                tf.histogram_summary("bout", bout);
             self.predict_angle = tf.matmul(fc_layer,Wout) + bout
-            tf.histogram_summary("Wout", Wout);
-            tf.histogram_summary("bout", bout);
             tf.histogram_summary('pred_angle_hist',self.predict_angle)
+
+        # Image summaries
+        layer1_image1 = tf.transpose(conv_layer1[0:1,:,:,:], perm=[3,1,2,0])
+        list_lc1 = tf.split(0,24,layer1_image1)
+        layer1_image1 = tf.concat(1, list_lc1)
+        tf.image_summary("Convolution layer 1", layer1_image1, max_images=100)
+        #tf.image_summary("Convolution layer 1", tf.reshape(conv_layer1[0,:,:,:], [24,21,78,1]), max_images=100)
+
+        layer2_image1 = tf.transpose(conv_layer2[0:1,:,:,:], perm=[3,1,2,0])
+        list_lc2 = tf.split(0,36,layer2_image1)
+        layer1_image1 = tf.concat(1, list_lc2)
+        tf.image_summary("Convolution layer 2", layer2_image1, max_images=100)
 
     def create_tensorflow(self):
         self.angle_truth = tf.placeholder(tf.float32, [None])
@@ -200,6 +223,7 @@ class steer_nn():
         for batch_idx in range(len(self.test_idx)//BATCH_SIZE):
             self.input_ori = self.cam[self.test_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE], :, :, :]
             self.angle_data = self.angle[self.test_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE]]
+            print("test_idx = ", self.test_idx[batch_idx*BATCH_SIZE:(batch_idx+1)*BATCH_SIZE])
 
             for img_cnt in range(self.input_ori.shape[0]):
                 # Resize to x/2, y/2
@@ -229,8 +253,6 @@ class steer_nn():
             # Record a summary for every batch
             self.test_writer.add_summary(self.summary,self.summary_idx)
             self.summary_idx += 1
-
-            print("pred_angle_eval = ", pred_angle_eval)
 
             test_out = np.zeros((len(self.angle_data),4))
             # index
@@ -275,24 +297,24 @@ class steer_nn():
 
     def restoreParam(self):
         # Restore the scene
-        self.saver.restore(self.session, "./record/model_tr_1.ckpt")
+        self.saver.restore(self.session, "./record/model_tr_2.ckpt")
         pass
 
 
 def main():
     c2_net = steer_nn()
 
-    np.set_printoptions(precision=5)
+    np.set_printoptions(precision=5,suppress=True)
 
-    #for epoch in range(10):
-    for epoch in gf.train_list:
+    for epoch in range(10):
+    #for epoch in gf.train_list:
         c2_net.open_dataset("/home/vitob/Downloads/deepdrive_hdf5/train_"+str(epoch).zfill(4)+".zlib.h5")
         print("Training on ./train_"+str(epoch).zfill(4)+".zlib.h5")
 
         # Training
-        c2_net.train()
+        #c2_net.train()
         # Evaluation
-        #c2_net.restoreParam()
+        c2_net.restoreParam()
 
         c2_net.test()
 

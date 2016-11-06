@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 import good_files as gf
 
 BATCH_SIZE = 16
-HIDDEN_LAYER_DEPTH = 1024
+HIDDEN_LAYER_DEPTH = 1164
 SCALE_PRED = 1000
 
 class steer_nn():
@@ -141,27 +141,69 @@ class steer_nn():
         #    bc5 = self.bias_variable([64])
         #    conv_layer5 = self.conv2d(conv_layer4,Wc5,bc5,1)
 
-        with tf.name_scope("fully-conn_layer"):
+        with tf.name_scope("fully-conn_layer1"):
             # Fully connected layer
             with tf.name_scope("weights"):
-                Wfc = self.weight_variable([1*15*64,HIDDEN_LAYER_DEPTH])
-                tf.histogram_summary("Wfc", Wfc);
+                Wfc1 = self.weight_variable([1*15*64,HIDDEN_LAYER_DEPTH])
+                tf.histogram_summary("Wfc1", Wfc1);
             with tf.name_scope("biases"):
-                bfc = self.bias_variable([HIDDEN_LAYER_DEPTH])
-                tf.histogram_summary("bfc", bfc);
-            conv_layer5_flat = tf.reshape(conv_layer4,[-1,1*15*64])
-            fc_layer = tf.nn.relu(tf.matmul(conv_layer5_flat,Wfc) + bfc)
-            tf.histogram_summary('conv_5_flat_activation',conv_layer5_flat)
+                bfc1 = self.bias_variable([HIDDEN_LAYER_DEPTH])
+                tf.histogram_summary("bfc1", bfc1);
+            conv_layer4_flat = tf.reshape(conv_layer4,[-1,1*15*64])
+            fc_layer1 = tf.nn.relu(tf.matmul(conv_layer4_flat,Wfc1) + bfc1)
+            tf.histogram_summary('fc_layer1_activation',fc_layer1)
+            self.keep_prob = tf.placeholder(tf.float32)
+            fc_layer1_drop = tf.nn.dropout(fc_layer1,self.keep_prob)
+            tf.histogram_summary('fc_layer1_dropout_activation',fc_layer1_drop)
+
+        with tf.name_scope("fully-conn_layer2"):
+            # Fully connected layer
+            with tf.name_scope("weights"):
+                Wfc2 = self.weight_variable([HIDDEN_LAYER_DEPTH,100])
+                tf.histogram_summary("Wfc2", Wfc2);
+            with tf.name_scope("biases"):
+                bfc2 = self.bias_variable([100])
+                tf.histogram_summary("bfc2", bfc2);
+            fc_layer2 = tf.nn.relu(tf.matmul(fc_layer1_drop,Wfc2) + bfc2)
+            tf.histogram_summary('fc_layer2_activation',fc_layer2)
+            fc_layer2_drop = tf.nn.dropout(fc_layer2,self.keep_prob)
+            tf.histogram_summary('fc_layer2_dropout_activation',fc_layer2_drop)
+
+        with tf.name_scope("fully-conn_layer3"):
+            # Fully connected layer
+            with tf.name_scope("weights"):
+                Wfc3 = self.weight_variable([100,50])
+                tf.histogram_summary("Wfc3", Wfc3);
+            with tf.name_scope("biases"):
+                bfc3 = self.bias_variable([50])
+                tf.histogram_summary("bfc3", bfc3);
+            fc_layer3 = tf.nn.relu(tf.matmul(fc_layer2_drop,Wfc3) + bfc3)
+            tf.histogram_summary('fc_layer3_activation',fc_layer3)
+            fc_layer3_drop = tf.nn.dropout(fc_layer3,self.keep_prob)
+            tf.histogram_summary('fc_layer3_dropout_activation',fc_layer3_drop)
+
+        with tf.name_scope("fully-conn_layer4"):
+            # Fully connected layer
+            with tf.name_scope("weights"):
+                Wfc4 = self.weight_variable([50,10])
+                tf.histogram_summary("Wfc4", Wfc4);
+            with tf.name_scope("biases"):
+                bfc4 = self.bias_variable([10])
+                tf.histogram_summary("bfc4", bfc4);
+            fc_layer4 = tf.nn.relu(tf.matmul(fc_layer3_drop,Wfc4) + bfc4)
+            tf.histogram_summary('fc_layer4_activation',fc_layer4)
+            fc_layer4_drop = tf.nn.dropout(fc_layer4,self.keep_prob)
+            tf.histogram_summary('fc_layer4_dropout_activation',fc_layer4_drop)
 
         with tf.name_scope("output_layer"):
             # Output  
             with tf.name_scope("weights"):
-                Wout = self.weight_variable([HIDDEN_LAYER_DEPTH,1])
+                Wout = self.weight_variable([10,1])
                 tf.histogram_summary("Wout", Wout);
             with tf.name_scope("biases"):
                 bout = self.bias_variable([1])
                 tf.histogram_summary("bout", bout);
-            self.predict_angle = tf.matmul(fc_layer,Wout) + bout
+            self.predict_angle = tf.matmul(fc_layer4_drop,Wout) + bout
             tf.histogram_summary('pred_angle_hist',self.predict_angle)
 
         # Image summaries
@@ -186,8 +228,8 @@ class steer_nn():
         # Monitor the cost of training
         tf.scalar_summary('Cost',self.cost)
         #self.optimizer = tf.train.AdamOptimizer(0.002).minimize(self.cost)
-        self.optimizer = tf.train.AdamOptimizer(0.0001).minimize(self.cost)
-        #self.optimizer = tf.train.AdamOptimizer(learning_rate=0.00005).minimize(self.cost)
+        #self.optimizer = tf.train.AdamOptimizer(0.0001).minimize(self.cost)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=0.00001).minimize(self.cost)
 
 #    @profile
     def train(self):
@@ -218,7 +260,8 @@ class steer_nn():
 
             self.summary, _, cost = self.session.run([self.merged_summaries, self.optimizer, self.cost], feed_dict={
                 self.img_in:self.input_data,
-                self.angle_truth:self.scaled_angle_data
+                self.angle_truth:self.scaled_angle_data,
+                self.keep_prob:0.8
             })
 
             print("local_count = ", local_count, "cost = ", cost)
@@ -250,13 +293,15 @@ class steer_nn():
 
             pred_angle_eval = self.predict_angle.eval(feed_dict = 
                     { 
-                        self.img_in     :   self.input_data
+                        self.img_in     :   self.input_data,
+                        self.keep_prob  :   1.0
                     })
             loss = tf.sqrt(tf.reduce_mean(tf.square(SCALE_PRED*self.angle_data - pred_angle_eval)))
 
             self.summary, cost = self.session.run([self.merged_summaries, self.cost], feed_dict={
                 self.img_in:self.input_data,
-                self.angle_truth:self.scaled_angle_data
+                self.angle_truth:self.scaled_angle_data,
+                self.keep_prob:1.0
             })
 
             # Record a summary for every batch
@@ -315,22 +360,22 @@ def main():
 
     np.set_printoptions(precision=5,suppress=True)
 
-    #for epoch in range(1):
-    for epoch in gf.train_list:
-        c2_net.open_dataset("/home/vitob/Downloads/deepdrive_hdf5/train_"+str(epoch).zfill(4)+".zlib.h5")
-        print("Training on ./train_"+str(epoch).zfill(4)+".zlib.h5")
+    for round in range(1): # Train 1 rounds
+        for epoch in gf.train_list:
+            c2_net.open_dataset("/home/vitob/Downloads/deepdrive_hdf5/train_"+str(epoch).zfill(4)+".zlib.h5")
+            print("Training on ./train_"+str(epoch).zfill(4)+".zlib.h5")
 
-        # Training
-        #c2_net.restoreParam()
-        c2_net.train()
-        # Evaluation
-        #c2_net.restoreParam()
+            # Training
+            #c2_net.restoreParam()
+            c2_net.train()
+            # Evaluation
+            #c2_net.restoreParam()
 
-        c2_net.test()
+            c2_net.test()
 
-        c2_net.close_dataset()
+            c2_net.close_dataset()
 
-    c2_net.saveParm()
+        c2_net.saveParm()
 
     return
 

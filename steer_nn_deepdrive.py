@@ -13,7 +13,7 @@ import good_files as gf
 
 BATCH_SIZE = 16
 HIDDEN_LAYER_DEPTH = 1024
-EPSILON = 0.000001
+SCALE_PRED = 1000
 
 class steer_nn():
     """
@@ -185,7 +185,9 @@ class steer_nn():
         self.cost = tf.sqrt(tf.reduce_mean(tf.square(self.angle_truth - self.predict_angle)))
         # Monitor the cost of training
         tf.scalar_summary('Cost',self.cost)
-        self.optimizer = tf.train.AdamOptimizer(0.002).minimize(self.cost)
+        #self.optimizer = tf.train.AdamOptimizer(0.002).minimize(self.cost)
+        self.optimizer = tf.train.AdamOptimizer(0.0001).minimize(self.cost)
+        #self.optimizer = tf.train.AdamOptimizer(learning_rate=0.00005).minimize(self.cost)
 
 #    @profile
     def train(self):
@@ -210,7 +212,8 @@ class steer_nn():
                 for channel in range(self.input_ori.shape[1]):
                     #self.input_data[local_count,:,:,channel] = (tmp_resized[:,:,channel]-tmp_resized[:,:,channel].mean())/tmp_resized[:,:,channel].std()
                     self.input_data[local_count,:,:,channel] = (tmp_resized[:,:,channel]-tmp_resized[:,:,channel].mean())/(np.max(tmp_resized[:,:,channel])-np.min(tmp_resized[:,:,channel]))
-                self.scaled_angle_data[local_count] = self.angle[img_cnt]
+                self.scaled_angle_data[local_count] = SCALE_PRED * self.angle_data[img_cnt]
+
                 local_count +=1
 
             self.summary, _, cost = self.session.run([self.merged_summaries, self.optimizer, self.cost], feed_dict={
@@ -243,16 +246,17 @@ class steer_nn():
                 # Normalization
                 for channel in range(self.input_ori.shape[1]):
                     self.input_data[img_cnt,:,:,channel] = (tmp_resized[:,:,channel]-tmp_resized[:,:,channel].mean())/(np.max(tmp_resized[:,:,channel])-np.min(tmp_resized[:,:,channel]))
+                self.scaled_angle_data[img_cnt] = SCALE_PRED * self.angle_data[img_cnt]
 
             pred_angle_eval = self.predict_angle.eval(feed_dict = 
                     { 
                         self.img_in     :   self.input_data
                     })
-            loss = tf.sqrt(tf.reduce_mean(tf.square(self.angle_data - pred_angle_eval)))
+            loss = tf.sqrt(tf.reduce_mean(tf.square(SCALE_PRED*self.angle_data - pred_angle_eval)))
 
             self.summary, cost = self.session.run([self.merged_summaries, self.cost], feed_dict={
                 self.img_in:self.input_data,
-                self.angle_truth:self.angle_data
+                self.angle_truth:self.scaled_angle_data
             })
 
             # Record a summary for every batch
@@ -263,12 +267,12 @@ class steer_nn():
             # index
             test_out[:,0] = range(len(self.angle_data))
             # Ground truth
-            test_out[:,1] = self.angle_data
+            test_out[:,1] = SCALE_PRED*self.angle_data
             # Predicted value
             test_out[:,2] = pred_angle_eval.transpose()
             # Delta
             test_out[:,3] = test_out[:,1] - test_out[:,2]
-            #print("Ground truth: ", self.angle_data*100)
+            #print("Ground truth: ", self.angle_data*SCALE_PRED)
             #print("Prediction: ", pred_angle_eval)
             print(test_out)
             print('Test batch: ', batch_idx, ' loss = ', loss.eval())
@@ -302,7 +306,7 @@ class steer_nn():
 
     def restoreParam(self):
         # Restore the scene
-        self.saver.restore(self.session, "./record/model_tr_2.ckpt")
+        self.saver.restore(self.session, "./record/model_tr_3.ckpt")
         pass
 
 
@@ -311,12 +315,13 @@ def main():
 
     np.set_printoptions(precision=5,suppress=True)
 
-    for epoch in range(1):
-    #for epoch in gf.train_list:
+    #for epoch in range(1):
+    for epoch in gf.train_list:
         c2_net.open_dataset("/home/vitob/Downloads/deepdrive_hdf5/train_"+str(epoch).zfill(4)+".zlib.h5")
         print("Training on ./train_"+str(epoch).zfill(4)+".zlib.h5")
 
         # Training
+        #c2_net.restoreParam()
         c2_net.train()
         # Evaluation
         #c2_net.restoreParam()
